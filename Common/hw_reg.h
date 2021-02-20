@@ -2,11 +2,11 @@
 /* Author    : Nourhan MAnsour                        */
 /* Date      : 28/1/2021                              */
 /* Version   : 1.0                                    */
-/* File      : DIO_reg.h                              */
+/* File      : HW_reg.h                               */
 /******************************************************/
 
-#ifndef DIO_REG_H
-#define DIO_REG_H
+#ifndef HW_REG_H
+#define HW_REG_H
 
 /*********************** PORT A **********************/
 #define GPIOA_CRL           *((volatile uint32 *) 0x40010800)
