@@ -9,6 +9,9 @@
 
 #include "STD_TYPES.h"
 
+/* compiler information */
+#define ARMGCC_C_STM32F103C8
+
 /* definition, used for the declaration of local pointers.*/
 #define AUTOMATIC
 
@@ -27,5 +30,12 @@
 
 /* the keyword inline in functions with “static” scope. */
 #define LOCAL_INLINE      static inline
+
+/*  declaration and definition of functions that ensures correct 
+    syntax of function declarations as required by a specific compiler.
+*/
+#define FUNC(rettype, memclass) rettype
+
+
 
 #endif

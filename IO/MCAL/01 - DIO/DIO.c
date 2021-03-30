@@ -1,7 +1,7 @@
 /******************************************************/
 /* Author    : Nourhan Mansour                        */
-/* Date      : 20/2/2021                              */
-/* Version   : 1.1.0                                  */
+/* Date      : 30/3/2021                              */
+/* Version   : 1.1.1                                  */
 /* File      : DIO.c                                  */
 /* Target    : STM32F103C8                            */
 /* AUTOSAR Version : 4.3.1                            */
@@ -17,14 +17,14 @@
 #define PORTx_CHANNEL_OFFSET (48U)
 
 /***    API ID    ***/
-#define DIO_ApiID_ReadChannel       0x00
-#define DIO_ApiID_WriteChannel      0x01
-#define DIO_ApiID_ReadPort          0x02
-#define DIO_ApiID_WritePort         0x03
-#define DIO_ApiID_ReadChannelGroup  0x04
+#define DIO_ApiID_ReadChannel 0x00
+#define DIO_ApiID_WriteChannel 0x01
+#define DIO_ApiID_ReadPort 0x02
+#define DIO_ApiID_WritePort 0x03
+#define DIO_ApiID_ReadChannelGroup 0x04
 #define DIO_ApiID_WriteChannelGroup 0x05
-#define DIO_ApiID_FlipChannel       0x11
-#define DIO_ApiID_GetVersionInfo    0x12
+#define DIO_ApiID_FlipChannel 0x11
+#define DIO_ApiID_GetVersionInfo 0x12
 
 //      Local Type Def
 /**
@@ -50,19 +50,40 @@ DIO_modeType Dio_GetChannelMode(Dio_ChannelType ChannelId);
  **/
 Dio_LevelType Dio_ReadChannel(Dio_ChannelType ChannelId)
 {
-
+    Dio_LevelType channelValue = 0;
 #if DioDevErrorDetect == TRUE
     if (ChannelId >= PORTA_CHANNEL_OFFEST && ChannelId < PORTx_CHANNEL_OFFSET)
     {
         // OK proceed
+        if (ChannelId >= PORTA_CHANNEL_OFFEST &&
+            ChannelId < PORTB_CHANNEL_OFFEST)
+        {
+            channelValue = GET_BIT(GPIOA_IDR, ChannelId);
+        }
+        else if (ChannelId >= PORTB_CHANNEL_OFFEST &&
+                 ChannelId < PORTC_CHANNEL_OFFEST)
+        {
+            ChannelId -= PORTB_CHANNEL_OFFEST;
+            channelValue = GET_BIT(GPIOB_IDR, ChannelId);
+        }
+        else if (ChannelId >= PORTC_CHANNEL_OFFEST &&
+                 ChannelId < PORTx_CHANNEL_OFFSET)
+        {
+            ChannelId -= PORTC_CHANNEL_OFFEST;
+            channelValue = GET_BIT(GPIOC_IDR, ChannelId);
+        }
+        else
+        {
+            // Argument passing error
+            // shouldn't be here
+        }
     }
     else
     {
         Det_ReportError(DIO_ModuleId, 0, DIO_ApiID_ReadChannel, DIO_E_PARAM_INVALID_CHANNEL_ID);
-        return 0;
+        channelValue = 0;
     }
-#endif
-    Dio_LevelType channelValue = 0;
+#else
     if (ChannelId >= PORTA_CHANNEL_OFFEST &&
         ChannelId < PORTB_CHANNEL_OFFEST)
     {
@@ -85,6 +106,7 @@ Dio_LevelType Dio_ReadChannel(Dio_ChannelType ChannelId)
         // Argument passing error
         // shouldn't be here
     }
+#endif
     return channelValue;
 }
 
@@ -102,14 +124,64 @@ void Dio_WriteChannel(Dio_ChannelType ChannelId, Dio_LevelType Level)
     if (ChannelId >= PORTA_CHANNEL_OFFEST && ChannelId < PORTx_CHANNEL_OFFSET)
     {
         // OK proceed
+        /* 
+        * USE BSRR and BRR registers to provide atomic channel access 
+        */
+        if (ChannelId >= PORTA_CHANNEL_OFFEST &&
+            ChannelId < PORTB_CHANNEL_OFFEST)
+        {
+            switch (Level)
+            {
+            case STD_HIGH:
+                SET_BIT(GPIOA_BSRR, ChannelId); // Set Channel
+                break;
+            case STD_LOW:
+                SET_BIT(GPIOA_BRR, ChannelId); // Reset Channel
+                break;
+            default:
+                // shouldn't be here
+                break;
+            }
+        }
+        else if (ChannelId >= PORTB_CHANNEL_OFFEST &&
+                 ChannelId < PORTC_CHANNEL_OFFEST)
+        {
+            ChannelId -= PORTB_CHANNEL_OFFEST;
+            switch (Level)
+            {
+            case STD_HIGH:
+                SET_BIT(GPIOB_BSRR, ChannelId); // Set Channel
+                break;
+            case STD_LOW:
+                SET_BIT(GPIOB_BRR, ChannelId); // Reset Channel
+                break;
+            default:
+                // shouldn't be here
+                break;
+            }
+        }
+        else
+        {
+            ChannelId -= PORTC_CHANNEL_OFFEST;
+            switch (Level)
+            {
+            case STD_HIGH:
+                SET_BIT(GPIOC_BSRR, ChannelId); // Set Channel
+                break;
+            case STD_LOW:
+                SET_BIT(GPIOC_BRR, ChannelId); // Reset Channel
+                break;
+            default:
+                // shouldn't be here
+                break;
+            }
+        }
     }
     else
     {
         Det_ReportError(DIO_ModuleId, 0, DIO_ApiID_WriteChannel, DIO_E_PARAM_INVALID_CHANNEL_ID);
-        return 0;
     }
-#endif
-
+#else
     /* 
      * USE BSRR and BRR registers to provide atomic channel access 
      */
@@ -162,6 +234,8 @@ void Dio_WriteChannel(Dio_ChannelType ChannelId, Dio_LevelType Level)
             break;
         }
     }
+#endif
+return ; 
 }
 
 /**
@@ -174,22 +248,42 @@ void Dio_WriteChannel(Dio_ChannelType ChannelId, Dio_LevelType Level)
  **/
 Dio_PortLevelType Dio_ReadPort(Dio_PortType PortId)
 {
+
+    Dio_PortLevelType ret_PortValue = 0 ;
 #if DioDevErrorDetect == TRUE
     if (PortId >= DIO_PORTTYPE_PORTA && PortId <= DIO_PORTTYPE_PORTC)
     {
         // OK proceed
+        /**
+     * Note: Data is sampled into IDR Every APB2 clock sycle
+     */
+
+        switch (PortId)
+        {
+        case DIO_PORTTYPE_PORTA:
+            ret_PortValue = (GPIOA_IDR);
+            break;
+        case DIO_PORTTYPE_PORTB:
+            ret_PortValue = (GPIOB_IDR);
+            break;
+        case DIO_PORTTYPE_PORTC:
+            ret_PortValue = (GPIOC_IDR);
+            break;
+        default:
+            ret_PortValue = 0; // Error occured in argument passing
+            break;
+        }
     }
     else
     {
         Det_ReportError(DIO_ModuleId, 0, DIO_ApiID_ReadPort, DIO_E_PARAM_INVALID_PORT_ID);
-        return 0;
+        ret_PortValue = 0;
     }
-#endif
+#else
 
     /**
      * Note: Data is sampled into IDR Every APB2 clock sycle
      */
-    Dio_PortLevelType ret_PortValue;
 
     switch (PortId)
     {
@@ -206,6 +300,8 @@ Dio_PortLevelType Dio_ReadPort(Dio_PortType PortId)
         ret_PortValue = 0; // Error occured in argument passing
         break;
     }
+
+#endif
     return ret_PortValue;
 }
 
@@ -223,14 +319,33 @@ void Dio_WritePort(Dio_PortType PortId, Dio_PortLevelType Level)
     if (PortId >= DIO_PORTTYPE_PORTA && PortId <= DIO_PORTTYPE_PORTC)
     {
         // OK proceed
+        /* Set the value of the output data register */
+
+        /*
+        Note: if a DIO pin is configured as input, 
+        ODR is an open switch and doesn't affect the 
+        physical pin level nor the value in the IDR register
+    */
+        switch (PortId)
+        {
+        case DIO_PORTTYPE_PORTA:
+            GPIOA_ODR = Level;
+            break;
+        case DIO_PORTTYPE_PORTB:
+            GPIOB_ODR = Level;
+            break;
+        case DIO_PORTTYPE_PORTC:
+            GPIOC_ODR = Level;
+            break;
+        default:
+            break;
+        }
     }
     else
     {
         Det_ReportError(DIO_ModuleId, 0, DIO_ApiID_WritePort, DIO_E_PARAM_INVALID_PORT_ID);
-        return 0;
     }
-#endif
-
+#else
     /* Set the value of the output data register */
 
     /*
@@ -252,6 +367,7 @@ void Dio_WritePort(Dio_PortType PortId, Dio_PortLevelType Level)
     default:
         break;
     }
+#endif
 }
 
 /**
@@ -301,7 +417,7 @@ void Dio_WriteChannelGroup(const Dio_ChannelGroupType *ChannelGroupIdPtr, Dio_Po
 #if DioDevErrorDetect == TRUE
     // TODO
 #endif
-    uint32 subset_level;
+    uint32 subset_level = 0 ;
 
     switch (ChannelGroupIdPtr->port)
     {
@@ -323,6 +439,7 @@ void Dio_WriteChannelGroup(const Dio_ChannelGroupType *ChannelGroupIdPtr, Dio_Po
     default:
         break;
     }
+    return ;
 }
 #if DioVersionInfoApi == TRUE
 /**
@@ -338,7 +455,7 @@ void Dio_GetVersionInfo(Std_VersionInfoType *VersionInfo)
     if (VersionInfo == NULL_PTR)
     {
         Det_ReportError(DIO_ModuleId, 0, DIO_ApiID_GetVersionInfo, DIO_E_PARAM_POINTER);
-        return ;
+        return;
     }
     else
     {
@@ -350,6 +467,7 @@ void Dio_GetVersionInfo(Std_VersionInfoType *VersionInfo)
     VersionInfo->sw_minor_version = DIO_SW_MINOR_VERSION;
     VersionInfo->sw_patch_version = DIO_SW_PATCH_VERSION;
     VersionInfo->vendorID = DIO_VendorId;
+    return ; 
 }
 #endif
 
@@ -378,11 +496,11 @@ Dio_LevelType Dio_FlipChannel(Dio_ChannelType ChannelId)
     }
 #endif
 
-    Dio_LevelType ret_Level;
+    Dio_LevelType ret_Level = 0;
 
     if (Dio_GetChannelMode(ChannelId) == Dio_ModeInput)
     {
-        return Dio_ReadChannel(ChannelId);
+        ret_Level = Dio_ReadChannel(ChannelId);
     }
     else
     {
@@ -411,7 +529,7 @@ DIO_modeType Dio_GetChannelMode(Dio_ChannelType ChannelId)
     {
         if (ChannelId < 8)
         {
-            if ((GPIOA_CRL) & (0x0003 << (ChannelId * 4) ) == 0x00)
+            if ((GPIOA_CRL) & (0x0003 << (ChannelId * 4)) == 0x00)
             {
                 channelMode = Dio_ModeInput;
             }
@@ -451,7 +569,7 @@ DIO_modeType Dio_GetChannelMode(Dio_ChannelType ChannelId)
         }
         else
         {
-            ChannelId -=8;
+            ChannelId -= 8;
             if (GPIOB_CRH & (0x0003 << (ChannelId * 4)) == 0x00)
             {
                 channelMode = Dio_ModeInput;
@@ -479,7 +597,7 @@ DIO_modeType Dio_GetChannelMode(Dio_ChannelType ChannelId)
         }
         else
         {
-            ChannelId -=8;
+            ChannelId -= 8;
             if (GPIOC_CRH & (0x0003 << (ChannelId * 4)) == 0x00)
             {
                 channelMode = Dio_ModeInput;
