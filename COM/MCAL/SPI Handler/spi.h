@@ -17,7 +17,7 @@
 /*                          Published Info                              */
 /************************************************************************/
 
-#define SPI_ModuleId                    (038U)
+#define SPI_ModuleId                    (38U)
 #define SPI_VendorId                    (483U)
 
 #define SPI_AR_RELEASE_MAJOR_VERSION    (1U)
@@ -40,6 +40,11 @@
 #define SPI_E_UNINIT                    0x1A
 #define SPI_E_ALREADY_INITIALIZED       0x4A
 
+
+/************************************************************************/
+/*                                DEM                                   */
+/************************************************************************/
+#define SPI_E_HARDWARE_ERROR            0xFF
 
 /************************************************************************/
 /*                          RUN TIME ERRORS                             */
@@ -89,16 +94,16 @@
 // Spi Sequence Result 
 ////////////////////////////////////////////////////////////////////
 // The last transmission of the sequence has been finished success-fully.
-#define SPI_SEQ_OK          0x00
+#define SPI_SEQ_OK                  0x00
 
 // The SPI Handler/Driver is performing a SPI Sequence.. The mean-ing of this status is equal to SPI_BUSY.
-#define SPI_SEQ_PENDING     0x01
+#define SPI_SEQ_PENDING             0x01
 
 //The last transmission of the Sequence has failed.
-#define SPI_SEQ_FAILED      0x02
+#define SPI_SEQ_FAILED              0x02
 
 //An asynchronous transmit Job has been cancelled by user
-#define SPI_SEQ_CANCELLED      0x03
+#define SPI_SEQ_CANCELLED           0x03
 ////////////////////////////////////////////////////////////////////
 
 // SPI ASYNC MODE
@@ -108,8 +113,6 @@
 ////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////
-#define SPI_CHANNEL_MAX_DATA_BUFFER     0x05     // Min Value = 1 (0 makes no sense)
-
 #define SPI1_HW_UNIT                    0x01
 #define SPI2_HW_UNIT                    0x02      
 
@@ -160,45 +163,6 @@
 #define SPi_JobPiriority3           3U
 
 
-///////////////////////////////////////
-// CS PINS
-///////////////////////////////////////
-    // PORTA channels
-#define  DIO_CHANNEL_A0         (0U)
-#define  DIO_CHANNEL_A1         (1U)
-#define  DIO_CHANNEL_A2         (2U)
-#define  DIO_CHANNEL_A3         (3U)
-#define  DIO_CHANNEL_A4         (4U)
-#define  DIO_CHANNEL_A5         (5U)
-#define  DIO_CHANNEL_A6         (6U)
-#define  DIO_CHANNEL_A7         (7U)
-#define  DIO_CHANNEL_A8         (8U)
-#define  DIO_CHANNEL_A9         (9U)
-#define  DIO_CHANNEL_A10        (10U)
-#define  DIO_CHANNEL_A11        (11U)
-#define  DIO_CHANNEL_A12        (12U)
-#define  DIO_CHANNEL_A15        (15U)
-     // PORTB channles 
-#define  DIO_CHANNEL_B0         (16U)
-#define  DIO_CHANNEL_B1         (17U)
-#define  DIO_CHANNEL_B3         (19U)
-#define  DIO_CHANNEL_B4         (20U)
-#define  DIO_CHANNEL_B5         (21U)
-#define  DIO_CHANNEL_B6         (22U)
-#define  DIO_CHANNEL_B7         (23U)
-#define  DIO_CHANNEL_B8         (24U)
-#define  DIO_CHANNEL_B9         (25U)
-#define  DIO_CHANNEL_B10        (26U)
-#define  DIO_CHANNEL_B11        (27U)
-#define  DIO_CHANNEL_B12        (28U)
-#define  DIO_CHANNEL_B13        (29U)
-#define  DIO_CHANNEL_B14        (30U)
-#define  DIO_CHANNEL_B15        (31U) 
-    // PORTC channels
-#define  DIO_CHANNEL_C13        (45U)
-#define  DIO_CHANNEL_C14        (46U)
-#define  DIO_CHANNEL_C15        (47U)
-
 /************************************************************************/
 /*                            Type Definitons                           */
 /************************************************************************/
@@ -216,7 +180,7 @@ typedef boolean Spi_ClkPhaseType;
 typedef uint8 Spi_DffType; 
 
 // SPI_LSB_FIRST / SPI_LSB_LAST
-typedef boolean Spi_LSBFirstType; 
+typedef boolean SpiTransferStartType; 
 
 // SPIBAUD_RATE_CLK_DIVx
 typedef uint8 Spi_BaudRateType; 
@@ -225,7 +189,7 @@ typedef uint8 Spi_BaudRateType;
 typedef uint8 Spi_HWunitType; 
 
 // DIO_CHANNEL_xx
-typedef uint8 SPi_CS_Pin;
+typedef uint8 Spi_CS_Pin;
 
 // Range : SPi_JobPiriority0 (lowest) to SPi_JobPiriority3 (Highest) 
 typedef uint8 Spi_JobPiriority; 
@@ -271,24 +235,6 @@ typedef uint8 Spi_DataBufferType;
 // Spi_DataBufferType to send and / or receive by Channel
 typedef uint16 Spi_NumberOfDataType; 
 
-
-/*
-    # StackOverFlow: 
-    A Channel is a software exchange medium for data that are defined with the same criteria: 
-    Configuration Parameters, Number of Data elements with the same size and data pointers 
-    (Source & Destination) or location.
-
-    A Job is composed of one or several Channels. it's considered atomic and therefore cannot 
-    be interrupted by another job. it's a basic SPI command.
-
-    A sequence is a general routine like reading, erase, write. it contains a set of jobs that 
-    should be executed sequentially. A Sequence communication is interruptible 
-    (by another Sequence of communication).
-
-    for example, to write, you need the job
-    command job : to set the address
-    command addr data : to write the data
-*/
 // Specifies the identification (ID) for a Channel.
 typedef uint8 Spi_ChannelType;
 
@@ -298,31 +244,64 @@ typedef uint16 Spi_JobType;
 // Specifies the identification (ID) for a sequence of jobs.
 typedef uint8 Spi_SequenceType; 
 
+typedef struct 
+{
+    // channel config 
+    Spi_ChannelType SpiChannelId; 
+    Spi_DffType SpiDataWidth;                       // DFF_MODE_8Bit / DFF_MODE_16Bit
+    SpiTransferStartType SpiTransferStart;          // LSB_FIRST / LSB_LAST
+		uint8 ChannelType;                               // Specify EB/IB type      
+		/* For IB - contains number of IB data elements,
+    For EB - contains maximum data elements          */
+		uint16 NoOfDataElements;
+    uint32 SpiDefaultData;                          // default Transmit Value
+}Spi_ChannelConfigType;
+
+typedef struct 
+{
+    Spi_JobType SpiJobId;                           // Job ID used with APIs
+    uint8 JobPriority;                              // Job Priority ranging from 0 (Lowest) to 3 (Highest) 
+    Spi_ChannelType *ChnlLinkPtrPhysical;           // Ptr to channels asscociated with the job 
+		uint8 No_Channel;																// No. of channels associated with the job
+    Spi_HWunitType  SpiHwUnit;                      // SP1 / SPI2 HW unit
+    Spi_ClkPolType SpiClkPol;                       // SPI_CLK_POL_LOW / SPI_CLK_POL_HIGH
+    Spi_ClkPhaseType SpiClkPhase;                   // SPI_CLK_PHASE_FIRST / SPI_CLK_PHASE_SECOND
+    Spi_BaudRateType SpiBaudRate;                   // SPIBAUD_RATE_CLK_DIVx
+    Spi_CS_Pin SpiCSPin;                            // DIO_CHANNEL_xx
+    boolean SpiCsOn;                                // TRUE = Chip Select Functionality ON
+    void (*SpiEndJobNotification_ptr)(void);        // Ptr to call back function       
+}Spi_JobConfigType;
+
+typedef struct 
+{
+    Spi_SequenceType SpiSeqId;                      // Sequence ID used with APIs
+    Spi_JobType * JobLinkPtr;                       // Ptr to jobs asscociated with the  seq
+    Spi_JobType NoOfJobs;														// Number of Jobs configured 
+}Spi_SeqConfigType;
+
 typedef struct Spi_ConfigType
 {
-    Spi_ModeType SpiMode;               // Master / Slave
+    // Master / Slave
+    Spi_ModeType SpiMode;                         
 
-    // channel config 
-    Spi_DffType Spi_ChannelDff;                     // DFF_MODE_8Bit / DFF_MODE_16Bit
-    Spi_LSBFirstType Spi_ChannelLSB;                // LSB_FIRST / LSB_LAST
-    uint16 defaultTransmitValue;                    // default Transmit Value 
-    Spi_DataBufferType DataBuffer [SPI_CHANNEL_MAX_DATA_BUFFER];// Internal Buffer Array 
-    Spi_ChannelType SpiChannel; 
+    // Pointer to channel configuration struct
+    Spi_ChannelConfigType * Spi_ChannelConfigPtr;     
+
+    // pointer to job configuration 
+    Spi_JobConfigType * Spi_JobConfigPtr; 
+
+    // Pointer to Sequence configutration 
+    Spi_SeqConfigType * Spi_SeqConfigPtr; 
+    // Number of Jobs configured 
+     Spi_JobType NoOfJobs;
+
+    // Number of Channels configured 
+     Spi_ChannelType NoOfChannels;
     
-    // Spi job config 
-    Spi_HWunitType  SpiHwUnit;                      // SP1 / SPI2 HW unit
-    Spi_ClkPolType SpiClkPol;                   // SPI_CLK_POL_LOW / SPI_CLK_POL_HIGH
-    Spi_ClkPhaseType SpiClkPhase;               // SPI_CLK_PHASE_FIRST / SPI_CLK_PHASE_SECOND
-    Spi_BaudRateType SpiBaudRate;               // SPIBAUD_RATE_CLK_DIVx
-    SPi_CS_Pin SpiCSPin;                        // DIO_CHANNEL_xx
-    boolean SpiCsOn;                            // TRUE = Chip Select Functionality ON
-    void (*SpiEndJobNotification_ptr)(void);    // Ptr to call back function       
-    Spi_JobType SpiJob; 
-    /* Collection of Jobs (at least one)
-        Interruptible or not interruptible after each Job
-        Sequence finish end notification function 
+    /* Currently not used / supported 
+        Defualt Value =  0  
     */
-    Spi_SequenceType SpiSequence;
+    Spi_SequenceType SpiSequence;               
 
 }Spi_ConfigType;
 

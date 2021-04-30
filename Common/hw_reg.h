@@ -53,6 +53,27 @@
 #define SPI_I2SCFGR_OFFSET      0x1C
 #define SPI_I2SPR_OFFSET        0x20
 
+/********************** SPI1 Registers ***************/
+#define SPI1_CR1               *((volatile uint32 *) (SPI1_BASE + SPI_CR1_OFFSET))
+#define SPI1_CR2               *((volatile uint32 *) (SPI1_BASE + SPI_CR2_OFFSET))
+#define SPI1_SR                *((volatile uint32 *) (SPI1_BASE + SPI_SR_OFFSET))
+#define SPI1_DR                *((volatile uint32 *) (SPI1_BASE + SPI_DR_OFFSET))
+#define SPI1_CRCPR             *((volatile uint32 *) (SPI1_BASE + SPI_CRCPR_OFFSET))
+#define SPI1_RXCRCR            *((volatile uint32 *) (SPI1_BASE + SPI_RXCRCR_OFFSET))
+#define SPI1_TXCRCR            *((volatile uint32 *) (SPI1_BASE + SPI_TXCRCR_OFFSET))
+#define SPI1_I2SCFGR           *((volatile uint32 *) (SPI1_BASE + SPI_I2SCFGR_OFFSET))
+#define SPI1_I2SPR             *((volatile uint32 *) (SPI1_BASE + SPI_I2SPR_OFFSET))
+
+/********************** SPI2 Registers ***************/
+#define SPI2_CR1               *((volatile uint32 *) (SPI2_BASE + SPI_CR1_OFFSET))
+#define SPI2_CR2               *((volatile uint32 *) (SPI2_BASE + SPI_CR2_OFFSET))
+#define SPI2_SR                *((volatile uint32 *) (SPI2_BASE + SPI_SR_OFFSET))
+#define SPI2_DR                *((volatile uint32 *) (SPI2_BASE + SPI_DR_OFFSET))
+#define SPI2_CRCPR             *((volatile uint32 *) (SPI2_BASE + SPI_CRCPR_OFFSET))
+#define SPI2_RXCRCR            *((volatile uint32 *) (SPI2_BASE + SPI_RXCRCR_OFFSET))
+#define SPI2_TXCRCR            *((volatile uint32 *) (SPI2_BASE + SPI_TXCRCR_OFFSET))
+#define SPI2_I2SCFGR           *((volatile uint32 *) (SPI2_BASE + SPI_I2SCFGR_OFFSET))
+#define SPI2_I2SPR             *((volatile uint32 *) (SPI2_BASE + SPI_I2SPR_OFFSET))
 
 /******** Registers Bits *************/
 
