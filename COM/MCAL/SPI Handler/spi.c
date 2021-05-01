@@ -36,7 +36,7 @@
 /************************************************************************/
 /*                          Local functions                             */
 /************************************************************************/
-static void SPI_StaticStartTransmission(Spi_HWunitType HW_Unit, uint32 data);
+static void SPI_StaticStartTransmission(Spi_HWunitType HW_Unit, const Spi_DataBufferType *Srcdata, Spi_DataBufferType *Desdata, Spi_NumberOfDataType Length);
 
 /************************************************************************/
 /*                         Global variables                             */
@@ -103,8 +103,8 @@ void Spi_Init(const Spi_ConfigType *ConfigPtr)
 /**
     * @name : Spi_WriteIB
 		* @param: Channel: Channel ID.
-		* 			 DataBufferPtr: Pointer to source data buffer.
-		� 				Note: If this pointer is null, default transmit value of this channel will be used instead.
+		* 			 	DataBufferPtr: Pointer to source data buffer.
+		* 				Note: If this pointer is null, default transmit value of this channel will be used instead.
     * Reentrancy: Reentrant
     * @Return:  Std_ReturnType:
 	  *          E_OK: Write command has been accepted 
@@ -320,62 +320,82 @@ Std_ReturnType Spi_SyncTransmit(Spi_SequenceType Sequence)
         // OK Proceed
         else
         {
+            // Set Sequence status to pending
             Spi_SequenceResult[Sequence] = SPI_SEQ_PENDING;
-            Spi_SeqConfigType *Spi_Seq = Spi_ConfigPtr->Spi_SeqConfigPtr;
+            // Create an instance of the sequence
+            Spi_SeqConfigType Spi_Seq = Spi_ConfigPtr->Spi_SeqConfigPtr[Sequence];
+            // Job instance
             Spi_JobType Spi_CurrentJob;
             Spi_JobConfigType Spi_CurrentJobPtr;
+            // Channel instance
             Spi_ChannelConfigType Spi_CurrentChPtr;
             uint16 JobIdx = 0;
             uint16 SpiAllJobIdIdx = 0;
             uint8 SpiChIdx = 0;
-            for (JobIdx = 0; JobIdx < Spi_Seq->NoOfJobs; JobIdx++)
+            for (JobIdx = 0; JobIdx < Spi_Seq.NoOfJobs; JobIdx++)
             {
                 // Get the curretn job information in the sequence
-                Spi_CurrentJob = (*(Spi_Seq->JobLinkPtr) + JobIdx);
+                Spi_CurrentJob = Spi_Seq.JobLinkPtr[JobIdx];
 
-                // Find a job match in the configuration structure
-                for (SpiAllJobIdIdx = 0; SpiAllJobIdIdx < Spi_ConfigPtr->NoOfJobs; SpiAllJobIdIdx++)
+                Spi_CurrentJobPtr = Spi_ConfigPtr->Spi_JobConfigPtr[SpiAllJobIdIdx];
+
+                // Check which HW unit the job is assigned to and perform Sync send operation.
+                if (Spi_CurrentJobPtr.SpiHwUnit == SPI1_HW_UNIT)
                 {
-                    // TRUE == Match is found
-                    if (Spi_ConfigPtr->Spi_JobConfigPtr[SpiAllJobIdIdx].SpiJobId == Spi_CurrentJob)
+                    // UPDATE SPI STATUS
+                    Spi1_Status = SPI_BUSY;
+                }
+                else if (Spi_CurrentJobPtr.SpiHwUnit == SPI2_HW_UNIT)
+                {
+                    // UPDATE SPI STATUS
+                    Spi2_Status = SPI_BUSY;
+                }
+                else
+                {
+                    // Shouldn't be here
+                }
+                // UPDATE SEQ Status
+                Spi_SequenceResult[Sequence] = SPI_SEQ_PENDING;
+
+                // UPDATE JOB Status
+                Spi_JobResult[Spi_CurrentJobPtr.SpiJobId] = SPI_JOB_PENDING;
+
+                // Scan all channels in the job availabe to send
+                for (SpiChIdx = 0; SpiChIdx < Spi_CurrentJobPtr.No_Channel; SpiChIdx++)
+                {
+                    // Access channel with ID ChnlLinkPtrPhysical[SpiChIdx] from the main config struct
+                    Spi_CurrentChPtr = Spi_ConfigPtr->Spi_ChannelConfigPtr[Spi_CurrentJobPtr.ChnlLinkPtrPhysical[SpiChIdx]];
+                    // Start transmitting Channel data
+                    if (Spi_CurrentChPtr.ChannelType == SpiChannelBufferIB)
                     {
-
-                        Spi_CurrentJobPtr = Spi_ConfigPtr->Spi_JobConfigPtr[SpiAllJobIdIdx];
-
-                        // Check which HW unit the job is assigned to and perform Sync send operation.
-                        if (Spi_CurrentJobPtr.SpiHwUnit == SPI1_HW_UNIT)
-                        {
-                            // UPDATE SPI STATUS
-                            Spi1_Status = SPI_BUSY;
-
-                            // UPDATE SEQ Status
-                            Spi_SequenceResult[Sequence] = SPI_SEQ_PENDING;
-
-                            // UPDATE JOB Status
-                            Spi_JobResult[Spi_CurrentJobPtr.SpiJobId] = SPI_JOB_PENDING;
-
-                            // Scan all channels in the job availabe to send
-                            for (SpiChIdx = 0; SpiChIdx < Spi_CurrentJobPtr.No_Channel; SpiChIdx++)
-                            {
-                                // Access channel with ID ChnlLinkPtrPhysical[SpiChIdx] from the main config struct
-                                Spi_CurrentChPtr = Spi_ConfigPtr->Spi_ChannelConfigPtr[Spi_CurrentJobPtr.ChnlLinkPtrPhysical[SpiChIdx]];
-                                // Start transmitting Channel data
-                                //											SPI_StaticStartTransmission(SPI1_HW_UNIT ,  );
-                            }
-                        }
-                        else if (Spi_CurrentJobPtr.SpiHwUnit == SPI2_HW_UNIT)
-                        {
-                            // UPDATE SPI STATUS
-                            Spi2_Status = SPI_BUSY;
-                        }
-                        else
-                        {
-                            // Error Shouldn't be here
-                        }
-                        break;
+                        SPI_StaticStartTransmission(Spi_CurrentJobPtr.SpiHwUnit, Spi_IB[Spi_CurrentChPtr.SpiChannelId], Spi_IB[Spi_CurrentChPtr.SpiChannelId], Spi_CurrentChPtr.NoOfDataElements);
+                    }
+                    else
+                    {
+                        SPI_StaticStartTransmission(Spi_CurrentJobPtr.SpiHwUnit, Spi_EB[Spi_CurrentChPtr.SpiChannelId].srcDataPtr, Spi_EB[Spi_CurrentChPtr.SpiChannelId].DestDataPtr, Spi_EB->Length);
                     }
                 }
+                // Update Job status
+                Spi_JobResult[Spi_CurrentJobPtr.SpiJobId] = SPI_JOB_OK;
+
+                // Release HW unit
+                if (Spi_CurrentJobPtr.SpiHwUnit == SPI1_HW_UNIT)
+                {
+                    // UPDATE SPI STATUS
+                    Spi1_Status = SPI_IDLE;
+                }
+                else if (Spi_CurrentJobPtr.SpiHwUnit == SPI2_HW_UNIT)
+                {
+                    // UPDATE SPI STATUS
+                    Spi2_Status = SPI_IDLE;
+                }
+                else
+                {
+                    // Shouldn't be here
+                }
             }
+            // Update Sequence Status
+            Spi_SequenceResult[Sequence] = SPI_SEQ_OK;
         }
     }
 #endif
@@ -484,33 +504,41 @@ void Spi_GetVersionInfo(Std_VersionInfoType *VersionInfo)
 /************************************************************************/
 /*                    Local functions Definitions                       */
 /************************************************************************/
-static void SPI_StaticStartTransmission(Spi_HWunitType HW_Unit, uint32 data)
+static void SPI_StaticStartTransmission(Spi_HWunitType HW_Unit, const Spi_DataBufferType *Srcdata, Spi_DataBufferType *Desdata, Spi_NumberOfDataType Length)
 {
+    volatile uint32 *SPI_DR;
+    volatile uint32 *SPI_SR;
+    uint16 idx = 0;
     // Clear ss pin (Active low)
     /* To Be handles in main by the GPIO Driver */
+
     switch (HW_Unit)
     {
     case SPI1_HW_UNIT:
-        // Send Data
-        SPI1_DR = data;
-        // Wait for Busy Flag
-        while (GET_BIT(SPI1_SR, SPI_SR_BSY) != 0)
-            ;
+        SPI_DR = &SPI1_DR;
+        SPI_SR = &SPI1_SR;
         break;
     case SPI2_HW_UNIT:
-        // Send Data
-        SPI2_DR = data;
-        // Wait for Busy Flag
-        while (GET_BIT(SPI2_SR, SPI_SR_BSY) != 0)
-            ;
+        SPI_DR = &SPI2_DR;
+        SPI_SR = &SPI2_SR;
         break;
     default:
         // Shoulnd't be here
+        SPI_DR = &SPI1_DR;
+        SPI_SR = &SPI1_SR;
         break;
     }
 
     // set SS pin
     /* To be handled in main by GPIO DRIVER */
-
+    for (idx = 0; idx < Length; idx++)
+    {
+        // Send Data
+        *SPI_DR = Srcdata[idx];
+        // Wait for Busy Flag
+        while (GET_BIT(*SPI_SR, SPI_SR_BSY) != 0)
+            ;
+        Desdata[idx] = (*SPI_DR);
+    }
     return;
 }
