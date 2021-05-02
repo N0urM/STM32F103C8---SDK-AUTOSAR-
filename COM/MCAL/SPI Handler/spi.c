@@ -1,7 +1,7 @@
 /************************************************************************/
 /* Author    : Nourhan Mansour                                          */
-/* Date      : 13/4/2021                                                */
-/* Version   : 1.1.0                                                    */
+/* Date      : 2/5/2021                                                 */
+/* Version   : 1.1.1                                                    */
 /* File      : spi.c                                                    */
 /************************************************************************/
 
@@ -33,10 +33,25 @@
 #define Spi_ApiID_Spi_Cancel
 #define Spi_ApiID_Spi_SetAsyncMode
 #define Spi_ApiID_Spi_MainFunction_Handling
+
+/************************************************************************/
+/*                          Type Definition                             */
+/************************************************************************/
+typedef struct TransmitionType
+{
+    volatile uint32 *SPI_DR;
+    volatile uint32 *SPI_SR;
+    const Spi_DataBufferType *Srcdata;
+    Spi_DataBufferType *Desdata;
+    Spi_NumberOfDataType Length;
+
+} TransmitionType;
+
 /************************************************************************/
 /*                          Local functions                             */
 /************************************************************************/
-static void SPI_StaticStartTransmission(Spi_HWunitType HW_Unit, const Spi_DataBufferType *Srcdata, Spi_DataBufferType *Desdata, Spi_NumberOfDataType Length);
+static void SPI_StaticStartTransmission(TransmitionType TransmitStrcut);
+static void Spi_StaticHandleJob(Spi_JobType SpiJobId);
 
 /************************************************************************/
 /*                         Global variables                             */
@@ -66,7 +81,9 @@ static struct Spi_EB
     Spi_DataBufferType *DestDataPtr;
     Spi_NumberOfDataType Length;
 
-} Spi_EB[SpiMaxChannel];
+} Spi_EB;
+
+static struct Spi_EB Spi_EBInstance[SpiMaxChannel];
 /************************************************************************/
 /*                         APIS definitions                             */
 /************************************************************************/
@@ -327,17 +344,14 @@ Std_ReturnType Spi_SyncTransmit(Spi_SequenceType Sequence)
             // Job instance
             Spi_JobType Spi_CurrentJob;
             Spi_JobConfigType Spi_CurrentJobPtr;
-            // Channel instance
-            Spi_ChannelConfigType Spi_CurrentChPtr;
             uint16 JobIdx = 0;
-            uint16 SpiAllJobIdIdx = 0;
-            uint8 SpiChIdx = 0;
             for (JobIdx = 0; JobIdx < Spi_Seq.NoOfJobs; JobIdx++)
             {
                 // Get the curretn job information in the sequence
+                // Note: Assuming Job idx represented by its ID
                 Spi_CurrentJob = Spi_Seq.JobLinkPtr[JobIdx];
 
-                Spi_CurrentJobPtr = Spi_ConfigPtr->Spi_JobConfigPtr[SpiAllJobIdIdx];
+                Spi_CurrentJobPtr = Spi_ConfigPtr->Spi_JobConfigPtr[Spi_CurrentJob];
 
                 // Check which HW unit the job is assigned to and perform Sync send operation.
                 if (Spi_CurrentJobPtr.SpiHwUnit == SPI1_HW_UNIT)
@@ -360,21 +374,9 @@ Std_ReturnType Spi_SyncTransmit(Spi_SequenceType Sequence)
                 // UPDATE JOB Status
                 Spi_JobResult[Spi_CurrentJobPtr.SpiJobId] = SPI_JOB_PENDING;
 
-                // Scan all channels in the job availabe to send
-                for (SpiChIdx = 0; SpiChIdx < Spi_CurrentJobPtr.No_Channel; SpiChIdx++)
-                {
-                    // Access channel with ID ChnlLinkPtrPhysical[SpiChIdx] from the main config struct
-                    Spi_CurrentChPtr = Spi_ConfigPtr->Spi_ChannelConfigPtr[Spi_CurrentJobPtr.ChnlLinkPtrPhysical[SpiChIdx]];
-                    // Start transmitting Channel data
-                    if (Spi_CurrentChPtr.ChannelType == SpiChannelBufferIB)
-                    {
-                        SPI_StaticStartTransmission(Spi_CurrentJobPtr.SpiHwUnit, Spi_IB[Spi_CurrentChPtr.SpiChannelId], Spi_IB[Spi_CurrentChPtr.SpiChannelId], Spi_CurrentChPtr.NoOfDataElements);
-                    }
-                    else
-                    {
-                        SPI_StaticStartTransmission(Spi_CurrentJobPtr.SpiHwUnit, Spi_EB[Spi_CurrentChPtr.SpiChannelId].srcDataPtr, Spi_EB[Spi_CurrentChPtr.SpiChannelId].DestDataPtr, Spi_EB->Length);
-                    }
-                }
+                // Handle current Job
+                Spi_StaticHandleJob(Spi_CurrentJob);
+
                 // Update Job status
                 Spi_JobResult[Spi_CurrentJobPtr.SpiJobId] = SPI_JOB_OK;
 
@@ -504,41 +506,130 @@ void Spi_GetVersionInfo(Std_VersionInfoType *VersionInfo)
 /************************************************************************/
 /*                    Local functions Definitions                       */
 /************************************************************************/
-static void SPI_StaticStartTransmission(Spi_HWunitType HW_Unit, const Spi_DataBufferType *Srcdata, Spi_DataBufferType *Desdata, Spi_NumberOfDataType Length)
-{
-    volatile uint32 *SPI_DR;
-    volatile uint32 *SPI_SR;
-    uint16 idx = 0;
-    // Clear ss pin (Active low)
-    /* To Be handles in main by the GPIO Driver */
 
+/**
+    * @name : SPI_StaticStartTransmission
+		* @param: HW_Unit: Associated HW unit 
+		* 			  Srcdata: source data buffer 
+		* 			  Destdata: destination data buffer
+		*					Length: Length of data buffer
+    * @Description: local function to start transmition of array of data and store the result.
+**/
+static void SPI_StaticStartTransmission(TransmitionType TransmitStrcut)
+{
+    uint16 idx = 0;
+
+    // Send Data
+    for (idx = 0; idx < TransmitStrcut.Length - 4; idx += 4)
+    {
+        // *SPI_DR = Srcdata[idx+3] & (Srcdata[idx+2]<<8) & (Srcdata[idx+1]<<16) & (Srcdata[idx]<<24) ;
+        *(TransmitStrcut.SPI_DR) = *((const uint32 *)((TransmitStrcut.Srcdata) + idx));
+        // Wait for Busy Flag
+        while (GET_BIT(*(TransmitStrcut.SPI_SR), SPI_SR_BSY) != 0)
+            ;
+        TransmitStrcut.Desdata[idx + 3] = ((*TransmitStrcut.SPI_DR) & 0xFF);
+        TransmitStrcut.Desdata[idx + 2] = (((*TransmitStrcut.SPI_DR) >> 8) & 0xFF);
+        TransmitStrcut.Desdata[idx + 1] = (((*TransmitStrcut.SPI_DR) >> 16) & 0xFF);
+        TransmitStrcut.Desdata[idx + 0] = (((*TransmitStrcut.SPI_DR) >> 24) & 0xFF);
+    }
+    return;
+}
+
+/**
+    * @name : Spi_StaticHandleJob
+	* @param: SpiJobId : Job ID. 
+    * @Description: local function to start transmition of array of data and store the result.
+**/
+static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
+{
+
+    volatile uint32 *SPI_CR;
+    // Channel instance
+    Spi_ChannelConfigType Spi_CurrentChConfig;
+    Spi_ChannelType Spi_CurrentCh;
+    uint8 SpiChIdx = 0;
+
+    // Job instance
+    Spi_JobConfigType Spi_CurrentJobConfig = Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId];
+    Spi_HWunitType HW_Unit = Spi_CurrentJobConfig.SpiHwUnit;
+
+    // transmission Struct
+    TransmitionType Transmit_Struct;
+
+    // Identify used HW unit
     switch (HW_Unit)
     {
     case SPI1_HW_UNIT:
-        SPI_DR = &SPI1_DR;
-        SPI_SR = &SPI1_SR;
+        Transmit_Struct.SPI_DR = &SPI1_DR;
+        Transmit_Struct.SPI_SR = &SPI1_SR;
+        SPI_CR = &SPI1_CR1;
         break;
     case SPI2_HW_UNIT:
-        SPI_DR = &SPI2_DR;
-        SPI_SR = &SPI2_SR;
+        Transmit_Struct.SPI_DR = &SPI2_DR;
+        Transmit_Struct.SPI_SR = &SPI2_SR;
+        SPI_CR = &SPI2_CR1;
         break;
     default:
         // Shoulnd't be here
-        SPI_DR = &SPI1_DR;
-        SPI_SR = &SPI1_SR;
+        Transmit_Struct.SPI_DR = NULL_PTR;
+        Transmit_Struct.SPI_SR = NULL_PTR;
         break;
     }
 
-    // set SS pin
-    /* To be handled in main by GPIO DRIVER */
-    for (idx = 0; idx < Length; idx++)
+    // Clear ss pin (Active low)
+    if (Spi_CurrentJobConfig.SpiCsOn == TRUE)
     {
-        // Send Data
-        *SPI_DR = Srcdata[idx];
-        // Wait for Busy Flag
-        while (GET_BIT(*SPI_SR, SPI_SR_BSY) != 0)
-            ;
-        Desdata[idx] = (*SPI_DR);
     }
-    return;
+    else
+    {
+    }
+    // Send Data
+    // Scan all channels in the job availabe to send
+    for (SpiChIdx = 0; SpiChIdx < Spi_CurrentJobConfig.No_Channel; SpiChIdx++)
+    {
+
+        // Access channel with ID ChnlLinkPtrPhysical[SpiChIdx] from the main config struct
+        Spi_CurrentCh = Spi_CurrentJobConfig.ChnlLinkPtrPhysical[SpiChIdx];
+        Spi_CurrentChConfig = Spi_ConfigPtr->Spi_ChannelConfigPtr[Spi_CurrentCh];
+
+        // Config LSB / MSB
+        if (Spi_CurrentChConfig.SpiTransferStart == LSB_FIRST)
+        {
+            SET_BIT(*SPI_CR, SPI_CR1_LSBF); // LSB sent first
+        }
+        else if (Spi_CurrentChConfig.SpiTransferStart == MSB_FIRST)
+
+        {
+            CLR_BIT(*SPI_CR, SPI_CR1_LSBF); // MSB sent first
+        }
+        else
+        {
+            // Error in param
+        }
+
+        if (Spi_CurrentChConfig.ChannelType == SpiChannelBufferIB)
+        {
+            // Check if IB is null
+            if (Spi_IB[Spi_CurrentCh] == NULL_PTR)
+            {
+            }
+            else
+            {
+                Transmit_Struct.Srcdata = Spi_IB[Spi_CurrentCh];
+                Transmit_Struct.Desdata = Spi_IB[Spi_CurrentCh];
+                Transmit_Struct.Length = Spi_CurrentChConfig.NoOfDataElements;
+            }
+        }
+        else
+        {
+            if (Spi_EBInstance[Spi_CurrentCh].srcDataPtr == NULL_PTR)
+            {
+                Transmit_Struct.Srcdata = Spi_EBInstance[Spi_CurrentCh].srcDataPtr;
+                Transmit_Struct.Desdata = Spi_EBInstance[Spi_CurrentCh].DestDataPtr;
+                Transmit_Struct.Length = Spi_EBInstance[Spi_CurrentCh].Length;
+            }
+        }
+        SPI_StaticStartTransmission(Transmit_Struct);
+    }
+    // set SS pin
 }
