@@ -8,11 +8,6 @@
 #ifndef SPI_CFG_H
 #define SPI_CFG_H
 
-// SpiDemEventParameterRefs Container
-
-// Reference to configured DEM event to report "Hardware failure". 
-// If the reference is not configured the error shall not be reported.
-#define SPI_E_HARDWARE_ERROR
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 

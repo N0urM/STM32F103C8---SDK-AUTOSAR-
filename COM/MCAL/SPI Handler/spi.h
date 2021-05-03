@@ -1,8 +1,9 @@
 /************************************************************************/
 /* Author    : Nourhan Mansour                                          */
-/* Date      : 23/4/2021                                                */
-/* Version   : 1.1.1                                                    */
+/* Date      : 4/5/2021                                                 */
+/* Version   : 1.1.2                                                    */
 /* File      : spi.h                                                    */
+/* Note      : Current implementation only supports LEVEL 0 (SYNC) com. */
 /************************************************************************/
 
 #ifndef SPI_H
@@ -22,7 +23,7 @@
 
 #define SPI_AR_RELEASE_MAJOR_VERSION    (1U)
 #define SPI_AR_RELEASE_MINOR_VERSION    (1U)
-#define SPI_AR_RELEASE_REVISION_VERSION (0U)
+#define SPI_AR_RELEASE_REVISION_VERSION (2U)
 
 #define SPI_SW_MAJOR_VERSION            (4U)
 #define SPI_SW_MINOR_VERSION            (3U)
@@ -229,7 +230,8 @@ Enumerationo Range:
 typedef uint8 Spi_SeqResultType; 
 
 // Type of application data buffer elements.
-typedef uint8 Spi_DataBufferType; 
+// Should be of type EcucIntegerParamDef
+typedef uint32 Spi_DataBufferType; 
 
 // Type for defining the number of data elements of the type 
 // Spi_DataBufferType to send and / or receive by Channel
@@ -254,29 +256,29 @@ typedef struct
 		/* For IB - contains number of IB data elements,
     For EB - contains maximum data elements          */
 		uint16 NoOfDataElements;
-    uint32 SpiDefaultData;                          // default Transmit Value
+    Spi_DataBufferType SpiDefaultData;                          // default Transmit Value
 }Spi_ChannelConfigType;
 
 typedef struct 
 {
     Spi_JobType SpiJobId;                           // Job ID used with APIs
     uint8 JobPriority;                              // Job Priority ranging from 0 (Lowest) to 3 (Highest) 
-    Spi_ChannelType *ChnlLinkPtrPhysical;           // Ptr to channels asscociated with the job 
 		uint8 No_Channel;																// No. of channels associated with the job
-    Spi_HWunitType  SpiHwUnit;                      // SP1 / SPI2 HW unit
+    Spi_ChannelType *ChnlLinkPtrPhysical;           // Ptr to channels asscociated with the job 
+		Spi_HWunitType  SpiHwUnit;                      // SP1 / SPI2 HW unit
     Spi_ClkPolType SpiClkPol;                       // SPI_CLK_POL_LOW / SPI_CLK_POL_HIGH
     Spi_ClkPhaseType SpiClkPhase;                   // SPI_CLK_PHASE_FIRST / SPI_CLK_PHASE_SECOND
     Spi_BaudRateType SpiBaudRate;                   // SPIBAUD_RATE_CLK_DIVx
     Spi_CS_Pin SpiCSPin;                            // DIO_CHANNEL_xx
-    boolean SpiCsOn;                                // TRUE = Chip Select Functionality ON
-    void (*SpiEndJobNotification_ptr)(void);        // Ptr to call back function       
+    boolean SpiCsOn;                                // TRUE = Chip Select Functionality ON (HW handling)
+ //   void (*SpiEndJobNotification_ptr)(void);        // Ptr to call back function       
 }Spi_JobConfigType;
 
 typedef struct 
 {
-    Spi_SequenceType SpiSeqId;                      // Sequence ID used with APIs
-    Spi_JobType * JobLinkPtr;                       // Ptr to jobs asscociated with the  seq
+    Spi_JobType * JobLinkPtr;                       // Ptr to jobs IDs asscociated with the  seq
     Spi_JobType NoOfJobs;														// Number of Jobs configured 
+    Spi_SequenceType SpiSeqId;                      // Sequence ID used with APIs
 }Spi_SeqConfigType;
 
 typedef struct Spi_ConfigType
@@ -310,19 +312,33 @@ typedef struct Spi_ConfigType
 /************************************************************************/
 
 void Spi_Init( const Spi_ConfigType* ConfigPtr );
+
 Std_ReturnType Spi_DeInit( void ); 
+
 Std_ReturnType Spi_WriteIB( Spi_ChannelType Channel, const Spi_DataBufferType* DataBufferPtr );
-Std_ReturnType Spi_AsyncTransmit( Spi_SequenceType Sequence );
+
+// Std_ReturnType Spi_AsyncTransmit( Spi_SequenceType Sequence );
+
 Std_ReturnType Spi_ReadIB( Spi_ChannelType Channel, Spi_DataBufferType* DataBufferPointer );
+
 Std_ReturnType Spi_SetupEB( Spi_ChannelType Channel, const Spi_DataBufferType* SrcDataBufferPtr, Spi_DataBufferType* DesDataBufferPtr, Spi_NumberOfDataType Length );
+
 Spi_StatusType Spi_GetStatus( void );
+
 Spi_JobResultType Spi_GetJobResult( Spi_JobType Job ); 
+
 Spi_SeqResultType Spi_GetSequenceResult( Spi_SequenceType Sequence );
+
 void Spi_GetVersionInfo( Std_VersionInfoType* versioninfo );
+
 Std_ReturnType Spi_SyncTransmit( Spi_SequenceType Sequence );
+
 Spi_StatusType Spi_GetHWUnitStatus( Spi_HWunitType HWUnit );
-void Spi_Cancel( Spi_SequenceType Sequence );
-Std_ReturnType Spi_SetAsyncMode( Spi_AsyncModeType Mode );
-void Spi_MainFunction_Handling(void);
+
+// void Spi_Cancel( Spi_SequenceType Sequence );
+
+// Std_ReturnType Spi_SetAsyncMode( Spi_AsyncModeType Mode );
+
+// void Spi_MainFunction_Handling(void);
 
 #endif
