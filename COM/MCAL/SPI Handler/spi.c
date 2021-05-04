@@ -1,7 +1,7 @@
 /************************************************************************/
 /* Author    : Nourhan Mansour                                          */
-/* Date      : 02/5/2021                                                */
-/* Version   : 1.1.1                                                    */
+/* Date      : 5/5/2021                                                 */
+/* Version   : 1.1.2                                                    */
 /* File      : spi.c                                                    */
 /************************************************************************/
 
@@ -34,6 +34,11 @@
 #define Spi_ApiID_Spi_SetAsyncMode
 #define Spi_ApiID_Spi_MainFunction_Handling
 
+#define PORTA_CHANNEL_OFFEST (0U)
+#define PORTB_CHANNEL_OFFEST (16U)
+#define PORTC_CHANNEL_OFFEST (32U)
+#define PORTx_CHANNEL_OFFSET (48U)
+
 /************************************************************************/
 /*                          Type Definition                             */
 /************************************************************************/
@@ -52,12 +57,14 @@ typedef struct TransmitionType
 /************************************************************************/
 static void SPI_StaticStartTransmission(TransmitionType TransmitStrcut);
 static void Spi_StaticHandleJob(Spi_JobType SpiJobId);
+static void Spi_StaticInitHWUnits(void);
+static void Dio_WriteChannel(Spi_CS_Pin ChannelId, Std_ReturnType Level);
 
 /************************************************************************/
 /*                         Global variables                             */
 /************************************************************************/
 /* ptr to a copy of the configutation struct confgured by the user*/
-static Spi_ConfigType *Spi_ConfigPtr = (NULL_PTR);
+static const Spi_ConfigType *Spi_ConfigPtr = (NULL_PTR);
 
 /* Define the current status of the SPI module 
     Shared variable between APIs 
@@ -66,10 +73,10 @@ static Spi_StatusType Spi1_Status = SPI_UNINIT;
 static Spi_StatusType Spi2_Status = SPI_UNINIT;
 
 // Array to hold all Jobs' results
-static Spi_JobResultType Spi_JobResult[SpiMaxJob] = {SPI_JOB_OK};
+static Spi_JobResultType Spi_JobResult[SpiMaxJob];
 
 // Array to hold all Sequences' results
-static Spi_SeqResultType Spi_SequenceResult[SpiMaxSequence] = {SPI_SEQ_OK};
+static Spi_SeqResultType Spi_SequenceResult[SpiMaxSequence];
 
 // Internal Data buffer array
 static Spi_DataBufferType Spi_IB[SpiMaxChannel][SpiIbNBuffers];
@@ -87,8 +94,8 @@ static struct Spi_EB Spi_EBInstance[SpiMaxChannel];
 /*                         APIS definitions                             */
 /************************************************************************/
 /**
- * @@name : Spi_Init
- * @@param: ConfigPtr: Pointer to configuration set.
+ * @name : Spi_Init
+ * @param: ConfigPtr: Pointer to configuration set.
  * Service ID : 0x00 
  * Non Reentrant
  * Sync
@@ -105,25 +112,63 @@ void Spi_Init(const Spi_ConfigType *ConfigPtr)
     }
     else
     {
-        // ok
-    }
+        // ok proceed
+        uint16 JobIdx;
+        uint8 SeqIdx;
+        uint8 ChIdx;
 
+        // Copy Config ptr
+        Spi_ConfigPtr = ConfigPtr;
+
+        // Initialize HW units
+        Spi_StaticInitHWUnits();
+        Spi1_Status = SPI_IDLE;
+        Spi2_Status = SPI_IDLE;
+
+        // Initialize all jobs status
+        for (JobIdx = 0; JobIdx < SpiMaxJob; JobIdx++)
+        {
+            Spi_JobResult[JobIdx] = SPI_JOB_OK;
+        }
+
+        // Initialize all sequences status
+        for (SeqIdx = 0; SeqIdx < SpiMaxSequence; SeqIdx++)
+        {
+            Spi_SequenceResult[SeqIdx] = SPI_SEQ_OK;
+        }
+
+        // Setup buffers
+#if (SpiChannelBuffersAllowed == SpiChannelBufferIB || SpiChannelBuffersAllowed == SpiChannelBufferIB_EB)
+        for (ChIdx = 0; ChIdx < SpiMaxChannel; ChIdx++)
+        {
+            *Spi_IB[ChIdx] = (uint32)NULL_PTR;
+        }
 #endif
 
-    Spi_ConfigPtr = ConfigPtr;
-    uint16 Jobidx = 0;
-    uint8 ChannelIdx = 0;
+#if (SpiChannelBuffersAllowed == SpiChannelBufferEB || SpiChannelBuffersAllowed == SpiChannelBufferIB_EB)
+        for (ChIdx = 0; ChIdx < SpiMaxChannel; ChIdx++)
+        {
+            Spi_EBInstance[ChIdx].DestDataPtr = NULL_PTR;
+            Spi_EBInstance[ChIdx].srcDataPtr = NULL_PTR;
+        }
+#endif
+    }
+#else
+//		Spi_ConfigPtr = ConfigPtr;
+#endif
+
+    return;
 }
 
 #if SpiChannelBuffersAllowed == SpiChannelBufferIB || SpiChannelBuffersAllowed == SpiChannelBufferIB_EB
 /**
     * @name : Spi_WriteIB
-		* @param: Channel: Channel ID.
-		* 			 	DataBufferPtr: Pointer to source data buffer.
-		* 				Note: If this pointer is null, default transmit value of this channel will be used instead.
+	* @param: Channel: Channel ID.
+	* 		DataBufferPtr: Pointer to source data buffer.
+	* Note: If this pointer is null, default transmit value of this channel will be used instead.
     * Reentrancy: Reentrant
     * @Return:  Std_ReturnType:
-	  *          E_OK: Write command has been accepted 
+	*          E_OK: Write command has been accepted 
     *          E_NOT_OK: Write command has not been accepted
     * Sync
     * @Description: Service for writing one or more data to an IB SPI Handler/Driver Channel specified by parameter.
@@ -177,16 +222,16 @@ Std_ReturnType Spi_WriteIB(Spi_ChannelType Channel, const Spi_DataBufferType *Da
 
 #if SpiChannelBuffersAllowed == SpiChannelBufferIB || SpiChannelBuffersAllowed == SpiChannelBufferIB_EB
 /**
-    * @name : Spi_ReadIB
-		* @param: Channel: Channel ID.
-		* 			 DataBufferPtr: Pointer to source data buffer.
-    * Reentrancy: Reentrant
-    * @Return:  Std_ReturnType:
-	  *          E_OK: Write command has been accepted 
-    *          E_NOT_OK: Write command has not been accepted
-    * Sync
-    * @Description: Service for reading synchronously one or more data 
-		* from an IB SPI Handler/Driver Channel specified by parameter.
+* @name : Spi_ReadIB
+* @param: Channel: Channel ID.
+* 			 DataBufferPtr: Pointer to source data buffer.
+* @Reentrancy: Reentrant
+* @Return:  Std_ReturnType:
+*          E_OK: Write command has been accepted 
+*          E_NOT_OK: Write command has not been accepted
+* Sync
+* @Description: Service for reading synchronously one or more data 
+* from an IB SPI Handler/Driver Channel specified by parameter.
 **/
 Std_ReturnType Spi_ReadIB(Spi_ChannelType Channel, Spi_DataBufferType *DataBufferPointer)
 {
@@ -212,7 +257,7 @@ Std_ReturnType Spi_ReadIB(Spi_ChannelType Channel, Spi_DataBufferType *DataBuffe
         DataBufferPointer = Spi_IB[Channel];
     }
 #else
-    DataBufferPointer = Spi_IB[Channel];
+
 #endif
     return retStatus;
 }
@@ -220,19 +265,19 @@ Std_ReturnType Spi_ReadIB(Spi_ChannelType Channel, Spi_DataBufferType *DataBuffe
 
 #if SpiChannelBuffersAllowed == SpiChannelBufferEB || SpiChannelBuffersAllowed == SpiChannelBufferIB_EB
 /**
-    * @name : Spi_SetupEB
-		* @param: @Channel: Channel ID.
-		* 			  @SrcDataBufferPtr: Pointer to source data buffer.
-		*				  @DesDataBufferPtr: Pointer to destination data buffer in RAM.
-		* 			  @Length: number of data elements) of the data to be transmitted 
-		*							from SrcDataBufferPtr and/or received from DesDataBufferPtr. 
-    * Reentrancy: Reentrant
-    * @Return:  Std_ReturnType:
-	  *          E_OK: Write command has been accepted 
-    *          E_NOT_OK: Write command has not been accepted
-    * Sync
-    * @Description: Service to setup the buffers and the length of data 
-		*						 for the EB SPI Handler/Driver Channel specified.
+* @name : Spi_SetupEB
+* @param: @Channel: Channel ID.
+* 			  @SrcDataBufferPtr: Pointer to source data buffer.
+*				  @DesDataBufferPtr: Pointer to destination data buffer in RAM.
+* 			  @Length: number of data elements) of the data to be transmitted 
+*							from SrcDataBufferPtr and/or received from DesDataBufferPtr. 
+* Reentrancy: Reentrant
+* @Return:  Std_ReturnType:
+*          E_OK: Write command has been accepted 
+*          E_NOT_OK: Write command has not been accepted
+* Sync
+* @Description: Service to setup the buffers and the length of data 
+*						 for the EB SPI Handler/Driver Channel specified.
 **/
 Std_ReturnType Spi_SetupEB(Spi_ChannelType Channel,
                            const Spi_DataBufferType *SrcDataBufferPtr,
@@ -346,7 +391,7 @@ Std_ReturnType Spi_SyncTransmit(Spi_SequenceType Sequence)
             uint16 JobIdx = 0;
             for (JobIdx = 0; JobIdx < Spi_Seq.NoOfJobs; JobIdx++)
             {
-                // Get the current job information in the sequence
+                // Get the curretn job information in the sequence
                 // Note: Assuming Job idx represented by its ID
                 Spi_CurrentJob = Spi_Seq.JobLinkPtr[JobIdx];
 
@@ -408,15 +453,15 @@ Std_ReturnType Spi_SyncTransmit(Spi_SequenceType Sequence)
 
 #ifdef SpiHwStatusApi
 /**
-    * @name : Spi_GetHWUnitStatus
-		* @param: HWUnit: SPI Hardware microcontroller peripheral (unit) ID.
-    * Reentrancy: Reentrant
-		* @Return: Spi_StatusType:
-								SPI_UNINIT
-								SPI_IDLE
-								SPI_BUSY
-    * Sync
-    * @Description: return the status of the specified SPI Hardware microcontroller pe-ripheral.
+* @name : Spi_GetHWUnitStatus
+* @param: HWUnit: SPI Hardware microcontroller peripheral (unit) ID.
+* Reentrancy: Reentrant
+* @Return: Spi_StatusType:
+			SPI_UNINIT
+			SPI_IDLE
+			SPI_BUSY
+* Sync
+* @Description: return the status of the specified SPI Hardware microcontroller pe-ripheral.
 **/
 Spi_StatusType Spi_GetHWUnitStatus(Spi_HWunitType HWUnit)
 {
@@ -438,16 +483,16 @@ Spi_StatusType Spi_GetHWUnitStatus(Spi_HWunitType HWUnit)
 #endif
 
 /**
-    * @name : Spi_GetJobResult
-		* @param: Job: Job ID. An invalid job ID will return an undefined result.
-    * Reentrancy: Reentrant
-		* @Return : Spi_JobResultType:
+* @name : Spi_GetJobResult
+* @param: Job: Job ID. An invalid job ID will return an undefined result.
+* Reentrancy: Reentrant
+* @Return : Spi_JobResultType:
 					SPI_JOB_OK
 					SPI_JOB_PENDING
 					SPI_JOB_FAILED
 					SPI_JOB_QUEUED
-    * Sync
-    * @Description: This service returns the last transmission result of the specified Job.
+* Sync
+* @Description: This service returns the last transmission result of the specified Job.
 **/
 Spi_JobResultType Spi_GetJobResult(Spi_JobType Job)
 {
@@ -455,16 +500,16 @@ Spi_JobResultType Spi_GetJobResult(Spi_JobType Job)
 }
 
 /**
-    * @name : Spi_GetSequenceResult
-		* @param: Sequence: Sequence ID. An invalid seq ID will return an undefined result.
-    * Reentrancy: Reentrant
-		* @Return : Spi_SeqResultType:
+* @name : Spi_GetSequenceResult
+* @param: Sequence: Sequence ID. An invalid seq ID will return an undefined result.
+* Reentrancy: Reentrant
+* @Return : Spi_SeqResultType:
 					SPI_SEQ_OK
 					SPI_SEQ_PENDING
 					SPI_SEQ_FAILED
 					SPI_SEQ_QUEUED
-    * Sync
-    * @Description: This service returns the last transmission result of the specified Sequence.
+* Sync
+* @Description: This service returns the last transmission result of the specified Sequence.
 **/
 Spi_SeqResultType Spi_GetSequenceResult(Spi_SequenceType Sequence)
 {
@@ -509,12 +554,12 @@ void Spi_GetVersionInfo(Std_VersionInfoType *VersionInfo)
 /************************************************************************/
 
 /**
-    * @name : SPI_StaticStartTransmission
-		* @param: HW_Unit: Associated HW unit 
-		* 	    Srcdata: source data buffer 
-		* 		Destdata: destination data buffer
-		*	    Length: Length of data buffer
-    * @Description: local function to start transmition of array of data and store the result.
+* @name : SPI_StaticStartTransmission
+* @param: HW_Unit: Associated HW unit 
+* 			  Srcdata: source data buffer 
+* 			  Destdata: destination data buffer
+*					Length: Length of data buffer
+* @Description: local function to start transmition of array of data and store the result.
 **/
 static void SPI_StaticStartTransmission(TransmitionType TransmitStrcut)
 {
@@ -534,14 +579,14 @@ static void SPI_StaticStartTransmission(TransmitionType TransmitStrcut)
 }
 
 /**
-    * @name : Spi_StaticHandleJob
-		* @param: SpiJobId : Job ID
-    * @Description: Handle Job transmition
+* @name : Spi_StaticHandleJob
+* @param: SpiJobId : Job ID
+* @Description: Handle Job transmition
 **/
 static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
 {
 
-    volatile uint32 *SPI_CR;
+    volatile uint32 *SPI_CR1;
     // Channel instance
     Spi_ChannelConfigType Spi_CurrentChConfig;
     Spi_ChannelType Spi_CurrentCh;
@@ -560,12 +605,12 @@ static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
     case SPI1_HW_UNIT:
         Transmit_Struct.SPI_DR = &SPI1_DR;
         Transmit_Struct.SPI_SR = &SPI1_SR;
-        SPI_CR = &SPI1_CR1;
+        SPI_CR1 = &SPI1_CR1;
         break;
     case SPI2_HW_UNIT:
         Transmit_Struct.SPI_DR = &SPI2_DR;
         Transmit_Struct.SPI_SR = &SPI2_SR;
-        SPI_CR = &SPI2_CR1;
+        SPI_CR1 = &SPI2_CR1;
         break;
     default:
         // Shoulnd't be here
@@ -574,14 +619,51 @@ static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
         break;
     }
 
+    // Clk polarity select
+    switch (Spi_CurrentJobConfig.SpiClkPol)
+    {
+    case SPI_CLK_POL_HIGH:
+        SET_BIT(*SPI_CR1, SPI_CR1_CPOL); //idle = 1
+        break;
+    case SPI_CLK_POL_LOW:
+        CLR_BIT(*SPI_CR1, SPI_CR1_CPOL); //idle = 0
+        break;
+    default:
+        // ERROR
+        break;
+    }
+
+    // Clk phase select
+    switch (Spi_CurrentJobConfig.SpiClkPhase)
+    {
+    case SPI_CLK_PHASE_FIRST:
+        CLR_BIT(*SPI_CR1, SPI_CR1_CPHA); // Data on First Clock
+        break;
+    case SPI_CLK_PHASE_SECOND:
+        SET_BIT(*SPI_CR1, SPI_CR1_CPHA); // Data on Second Clock
+        break;
+    default:
+        // ERROR
+        break;
+    }
+
+    // Baud Rate Select
+    *(SPI_CR1) &= (~((uint32)Spi_CurrentJobConfig.SpiBaudRate << SPI_CR1_BR0));
+    *(SPI_CR1) |= ((uint32)Spi_CurrentJobConfig.SpiBaudRate << SPI_CR1_BR0);
+
     // Clear ss pin (Active low)
     if (Spi_CurrentJobConfig.SpiCsOn == TRUE)
     {
         // HW handle of SS bit
+        CLR_BIT(*SPI_CR1, SPI_CR1_SSM);
+        CLR_BIT(*SPI_CR1, SPI_CR1_SSI);
     }
     else
     {
         // SW handle of SS bit
+        SET_BIT(*SPI_CR1, SPI_CR1_SSI);
+        SET_BIT(*SPI_CR1, SPI_CR1_SSM);
+        Dio_WriteChannel(Spi_CurrentJobConfig.SpiCSPin, STD_LOW);
     }
 
     // Scan all channels in the job availabe to send
@@ -596,10 +678,10 @@ static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
         switch (Spi_CurrentChConfig.SpiTransferStart)
         {
         case LSB_FIRST:
-            SET_BIT(*SPI_CR, SPI_CR1_LSBF); // LSB sent first
+            SET_BIT(*SPI_CR1, SPI_CR1_LSBF); // LSB sent first
             break;
         case MSB_FIRST:
-            CLR_BIT(*SPI_CR, SPI_CR1_LSBF); // MSB sent first
+            CLR_BIT(*SPI_CR1, SPI_CR1_LSBF); // MSB sent first
             break;
         default:
             break;
@@ -637,10 +719,10 @@ static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
         switch (Spi_CurrentChConfig.SpiDataWidth)
         {
         case SPI_DFF_MODE_8Bit:
-            CLR_BIT(*SPI_CR, SPI_CR1_DFF); // 8-Bit data Selected
+            CLR_BIT(*SPI_CR1, SPI_CR1_DFF); // 8-Bit data Selected
             break;
         case SPI_DFF_MODE_16Bit:
-            SET_BIT(*SPI_CR, SPI_CR1_DFF); // 16-Bit data Selected
+            SET_BIT(*SPI_CR1, SPI_CR1_DFF); // 16-Bit data Selected
             break;
         default:
             break;
@@ -651,4 +733,104 @@ static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
     } // End of channels in the Job
 
     // set SS pin
+    if (Spi_CurrentJobConfig.SpiCsOn == TRUE)
+    {
+        // HW handle of SS bit
+        SET_BIT(*SPI_CR1, SPI_CR1_SSI);
+    }
+    else
+    {
+        // SW handle of SS bit
+        Dio_WriteChannel(Spi_CurrentJobConfig.SpiCSPin, STD_HIGH);
+    }
+}
+
+/**
+ * name : Dio_WriteChannel
+ * param: ChannelId: ID of DIO channel 
+ *            Level: Value to be written
+ * Reentrancy: Reentrant
+ * Sync
+ * Description: Service to set a level of a channel.
+ **/
+static void Dio_WriteChannel(Spi_CS_Pin ChannelId, Std_ReturnType Level)
+{
+    if (ChannelId >= PORTA_CHANNEL_OFFEST && ChannelId < PORTx_CHANNEL_OFFSET)
+    {
+        // OK proceed
+        /* 
+        * USE BSRR and BRR registers to provide atomic channel access 
+        */
+        if (ChannelId >= PORTA_CHANNEL_OFFEST &&
+            ChannelId < PORTB_CHANNEL_OFFEST)
+        {
+            switch (Level)
+            {
+            case STD_HIGH:
+                SET_BIT(GPIOA_BSRR, ChannelId); // Set Channel
+                break;
+            case STD_LOW:
+                SET_BIT(GPIOA_BRR, ChannelId); // Reset Channel
+                break;
+            default:
+                // shouldn't be here
+                break;
+            }
+        }
+        else if (ChannelId >= PORTB_CHANNEL_OFFEST &&
+                 ChannelId < PORTC_CHANNEL_OFFEST)
+        {
+            ChannelId -= PORTB_CHANNEL_OFFEST;
+            switch (Level)
+            {
+            case STD_HIGH:
+                SET_BIT(GPIOB_BSRR, ChannelId); // Set Channel
+                break;
+            case STD_LOW:
+                SET_BIT(GPIOB_BRR, ChannelId); // Reset Channel
+                break;
+            default:
+                // shouldn't be here
+                break;
+            }
+        }
+        else
+        {
+            ChannelId -= PORTC_CHANNEL_OFFEST;
+            switch (Level)
+            {
+            case STD_HIGH:
+                SET_BIT(GPIOC_BSRR, ChannelId); // Set Channel
+                break;
+            case STD_LOW:
+                SET_BIT(GPIOC_BRR, ChannelId); // Reset Channel
+                break;
+            default:
+                // shouldn't be here
+                break;
+            }
+        }
+    }
+    else
+    {
+        // Shouldn't be here
+    }
+
+    return;
+}
+
+/**
+    * @name : Spi_StaticInitHWUnits
+		* @param: NONE
+    * @Description: initialize all HW units. 
+**/
+static void Spi_StaticInitHWUnits(void)
+
+{
+    // [SWS_Spi_00040] The SPI Handler/Driver handles only the Master mode.
+
+    SET_BIT(SPI1_CR1, SPI_CR1_MSTR);
+    SET_BIT(SPI2_CR1, SPI_CR1_MSTR);
+
+    return;
 }

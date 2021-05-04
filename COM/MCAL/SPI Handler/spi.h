@@ -1,6 +1,6 @@
 /************************************************************************/
 /* Author    : Nourhan Mansour                                          */
-/* Date      : 4/5/2021                                                 */
+/* Date      : 5/5/2021                                                 */
 /* Version   : 1.1.2                                                    */
 /* File      : spi.h                                                    */
 /* Note      : Current implementation only supports LEVEL 0 (SYNC) com. */
@@ -119,7 +119,7 @@
 
 /* Master Slave Selection */
 #define SPI_MASTER_MODE                 1U
-#define SPI_SLAVE_MODE                  0U
+#define SPI_NOTUSED_MODE                0U
 
 /* Clk Polarity & phase  for either master or slave*/
 /*
@@ -283,10 +283,14 @@ typedef struct
 
 typedef struct Spi_ConfigType
 {
-    // Master / Slave
-    Spi_ModeType SpiMode;                         
+		// The SPI Handler/Driver only supports full-duplex mode
 
-    // Pointer to channel configuration struct
+		// MODE: SPI_NOTUSED_MODE / SPI_MASTER_MODE
+		// [SWS_Spi_00040] The SPI Handler/Driver handles only the Master mode.
+    Spi_ModeType Spi1Mode;
+		Spi_ModeType Spi2Mode;	
+
+    // Pointer to channel configuration 
     Spi_ChannelConfigType * Spi_ChannelConfigPtr;     
 
     // pointer to job configuration 
@@ -294,15 +298,14 @@ typedef struct Spi_ConfigType
 
     // Pointer to Sequence configutration 
     Spi_SeqConfigType * Spi_SeqConfigPtr; 
+	
     // Number of Jobs configured 
      Spi_JobType NoOfJobs;
 
     // Number of Channels configured 
      Spi_ChannelType NoOfChannels;
     
-    /* Currently not used / supported 
-        Defualt Value =  0  
-    */
+		// Nu,ber of Sequnces 
     Spi_SequenceType SpiSequence;               
 
 }Spi_ConfigType;
@@ -316,8 +319,6 @@ void Spi_Init( const Spi_ConfigType* ConfigPtr );
 Std_ReturnType Spi_DeInit( void ); 
 
 Std_ReturnType Spi_WriteIB( Spi_ChannelType Channel, const Spi_DataBufferType* DataBufferPtr );
-
-// Std_ReturnType Spi_AsyncTransmit( Spi_SequenceType Sequence );
 
 Std_ReturnType Spi_ReadIB( Spi_ChannelType Channel, Spi_DataBufferType* DataBufferPointer );
 
@@ -334,6 +335,8 @@ void Spi_GetVersionInfo( Std_VersionInfoType* versioninfo );
 Std_ReturnType Spi_SyncTransmit( Spi_SequenceType Sequence );
 
 Spi_StatusType Spi_GetHWUnitStatus( Spi_HWunitType HWUnit );
+
+// Std_ReturnType Spi_AsyncTransmit( Spi_SequenceType Sequence );
 
 // void Spi_Cancel( Spi_SequenceType Sequence );
 
