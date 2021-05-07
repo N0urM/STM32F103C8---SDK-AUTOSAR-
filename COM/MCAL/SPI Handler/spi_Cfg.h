@@ -9,8 +9,6 @@
 #define SPI_CFG_H
 
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
 // SPI GENERAL Container 
 
 // Switches the Spi_Cancel function ON or OFF.
@@ -86,20 +84,20 @@
 #define SpiEbMaxLength      10U
 
 // the maximum number of data buffers in case of IB Channels and only.
-#define SpiIbNBuffers       1U
+#define SpiIbNBuffers       30U
 
 // Spi Driver Container
 
 // No. of configured channels 
 // Range: 0 - 255
-#define SpiMaxChannel       10U
+#define SpiMaxChannel       3U
 
 // No. of configured jobs 
 // Range: 0 - 65535
-#define SpiMaxJob           1U
+#define SpiMaxJob           2U
 
 // No. of configured sequnces 
 // Range: 0 - 255
-#define SpiMaxSequence       1U
+#define SpiMaxSequence       2U
 
 #endif

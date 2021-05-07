@@ -254,7 +254,9 @@ Std_ReturnType Spi_ReadIB(Spi_ChannelType Channel, Spi_DataBufferType *DataBuffe
     }
     else
     {
-        DataBufferPointer = Spi_IB[Channel];
+			uint8 idx = 0 ;
+			for (idx =0; idx< Spi_ConfigPtr->Spi_ChannelConfigPtr[Channel].NoOfDataElements  ; idx++)
+				{	DataBufferPointer[idx] = Spi_IB[Channel][idx]; }
     }
 #else
 
@@ -384,26 +386,26 @@ Std_ReturnType Spi_SyncTransmit(Spi_SequenceType Sequence)
             // Set Sequence status to pending
             Spi_SequenceResult[Sequence] = SPI_SEQ_PENDING;
             // Create an instance of the sequence
-            Spi_SeqConfigType Spi_Seq = Spi_ConfigPtr->Spi_SeqConfigPtr[Sequence];
+           // volatile Spi_SeqConfigType Spi_Seq = Spi_ConfigPtr->Spi_SeqConfigPtr[Sequence];
             // Job instance
-            Spi_JobType Spi_CurrentJob;
-            Spi_JobConfigType Spi_CurrentJobPtr;
-            uint16 JobIdx = 0;
-            for (JobIdx = 0; JobIdx < Spi_Seq.NoOfJobs; JobIdx++)
+            volatile Spi_JobType Spi_CurrentJob;
+           // volatile Spi_JobConfigType Spi_CurrentJobPtr;
+            volatile uint16 JobIdx = 0;
+            for (JobIdx = 0; JobIdx < Spi_ConfigPtr->Spi_SeqConfigPtr[Sequence].NoOfJobs; JobIdx++)
             {
                 // Get the curretn job information in the sequence
                 // Note: Assuming Job idx represented by its ID
-                Spi_CurrentJob = Spi_Seq.JobLinkPtr[JobIdx];
+                Spi_CurrentJob = Spi_ConfigPtr->Spi_SeqConfigPtr[Sequence].JobLinkPtr[JobIdx];
 
-                Spi_CurrentJobPtr = Spi_ConfigPtr->Spi_JobConfigPtr[Spi_CurrentJob];
+              //  Spi_CurrentJobPtr = Spi_ConfigPtr->Spi_JobConfigPtr[Spi_CurrentJob];
 
                 // Check which HW unit the job is assigned to and perform Sync send operation.
-                if (Spi_CurrentJobPtr.SpiHwUnit == SPI1_HW_UNIT)
+                if (Spi_ConfigPtr->Spi_JobConfigPtr[Spi_CurrentJob].SpiHwUnit == SPI1_HW_UNIT)
                 {
                     // UPDATE SPI STATUS
                     Spi1_Status = SPI_BUSY;
                 }
-                else if (Spi_CurrentJobPtr.SpiHwUnit == SPI2_HW_UNIT)
+                else if (Spi_ConfigPtr->Spi_JobConfigPtr[Spi_CurrentJob].SpiHwUnit == SPI2_HW_UNIT)
                 {
                     // UPDATE SPI STATUS
                     Spi2_Status = SPI_BUSY;
@@ -416,21 +418,21 @@ Std_ReturnType Spi_SyncTransmit(Spi_SequenceType Sequence)
                 Spi_SequenceResult[Sequence] = SPI_SEQ_PENDING;
 
                 // UPDATE JOB Status
-                Spi_JobResult[Spi_CurrentJobPtr.SpiJobId] = SPI_JOB_PENDING;
+                Spi_JobResult[ Spi_ConfigPtr->Spi_JobConfigPtr[Spi_CurrentJob].SpiJobId] = SPI_JOB_PENDING;
 
                 // Handle current Job
                 Spi_StaticHandleJob(Spi_CurrentJob);
 
                 // Update Job status
-                Spi_JobResult[Spi_CurrentJobPtr.SpiJobId] = SPI_JOB_OK;
+                Spi_JobResult[Spi_ConfigPtr->Spi_JobConfigPtr[Spi_CurrentJob].SpiJobId] = SPI_JOB_OK;
 
                 // Release HW unit
-                if (Spi_CurrentJobPtr.SpiHwUnit == SPI1_HW_UNIT)
+                if (Spi_ConfigPtr->Spi_JobConfigPtr[Spi_CurrentJob].SpiHwUnit == SPI1_HW_UNIT)
                 {
                     // UPDATE SPI STATUS
                     Spi1_Status = SPI_IDLE;
                 }
-                else if (Spi_CurrentJobPtr.SpiHwUnit == SPI2_HW_UNIT)
+                else if (Spi_ConfigPtr->Spi_JobConfigPtr[Spi_CurrentJob].SpiHwUnit == SPI2_HW_UNIT)
                 {
                     // UPDATE SPI STATUS
                     Spi2_Status = SPI_IDLE;
@@ -573,7 +575,7 @@ static void SPI_StaticStartTransmission(TransmitionType TransmitStrcut)
         // Wait for Busy Flag
         while (GET_BIT(*(TransmitStrcut.SPI_SR), SPI_SR_BSY) != 0)
             ;
-        TransmitStrcut.Desdata[idx] = (((*TransmitStrcut.SPI_DR) >> 24) & 0xFF);
+     //   TransmitStrcut.Desdata[idx] = (((*TransmitStrcut.SPI_DR) >> 24) & 0xFF);
     }
     return;
 }
@@ -588,16 +590,16 @@ static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
 
     volatile uint32 *SPI_CR1;
     // Channel instance
-    Spi_ChannelConfigType Spi_CurrentChConfig;
-    Spi_ChannelType Spi_CurrentCh;
+  //  Spi_ChannelConfigType Spi_CurrentChConfig;
+    volatile Spi_ChannelType Spi_CurrentCh;
     uint8 SpiChIdx = 0;
 
     // Job instance
-    Spi_JobConfigType Spi_CurrentJobConfig = Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId];
-    Spi_HWunitType HW_Unit = Spi_CurrentJobConfig.SpiHwUnit;
+    // Spi_JobConfigType Spi_CurrentJobConfig = Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId];
+    Spi_HWunitType HW_Unit = Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId].SpiHwUnit;
 
     // transmission Struct
-    TransmitionType Transmit_Struct;
+    volatile TransmitionType Transmit_Struct;
 
     // Identify used HW unit
     switch (HW_Unit)
@@ -620,7 +622,7 @@ static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
     }
 
     // Clk polarity select
-    switch (Spi_CurrentJobConfig.SpiClkPol)
+    switch (Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId].SpiClkPol)
     {
     case SPI_CLK_POL_HIGH:
         SET_BIT(*SPI_CR1, SPI_CR1_CPOL); //idle = 1
@@ -634,7 +636,7 @@ static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
     }
 
     // Clk phase select
-    switch (Spi_CurrentJobConfig.SpiClkPhase)
+    switch (Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId].SpiClkPhase)
     {
     case SPI_CLK_PHASE_FIRST:
         CLR_BIT(*SPI_CR1, SPI_CR1_CPHA); // Data on First Clock
@@ -648,11 +650,11 @@ static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
     }
 
     // Baud Rate Select
-    *(SPI_CR1) &= (~((uint32)Spi_CurrentJobConfig.SpiBaudRate << SPI_CR1_BR0));
-    *(SPI_CR1) |= ((uint32)Spi_CurrentJobConfig.SpiBaudRate << SPI_CR1_BR0);
+    *(SPI_CR1) &= (~((uint32)Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId].SpiBaudRate << SPI_CR1_BR0));
+    *(SPI_CR1) |= ((uint32)Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId].SpiBaudRate << SPI_CR1_BR0);
 
     // Clear ss pin (Active low)
-    if (Spi_CurrentJobConfig.SpiCsOn == TRUE)
+    if (Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId].SpiCsOn == TRUE)
     {
         // HW handle of SS bit
         CLR_BIT(*SPI_CR1, SPI_CR1_SSM);
@@ -663,49 +665,49 @@ static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
         // SW handle of SS bit
         SET_BIT(*SPI_CR1, SPI_CR1_SSI);
         SET_BIT(*SPI_CR1, SPI_CR1_SSM);
-        Dio_WriteChannel(Spi_CurrentJobConfig.SpiCSPin, STD_LOW);
+        Dio_WriteChannel(Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId].SpiCSPin, STD_LOW);
     }
 
     // Scan all channels in the job availabe to send
-    for (SpiChIdx = 0; SpiChIdx < Spi_CurrentJobConfig.No_Channel; SpiChIdx++)
+    for (SpiChIdx = 0; SpiChIdx < Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId].No_Channel; SpiChIdx++)
     {
 
         // Access channel with ID ChnlLinkPtrPhysical[SpiChIdx] from the main config struct
-        Spi_CurrentCh = Spi_CurrentJobConfig.ChnlLinkPtrPhysical[SpiChIdx];
-        Spi_CurrentChConfig = Spi_ConfigPtr->Spi_ChannelConfigPtr[Spi_CurrentCh];
+        Spi_CurrentCh = Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId].ChnlLinkPtrPhysical[SpiChIdx];
+      //  Spi_CurrentChConfig = Spi_ConfigPtr->Spi_ChannelConfigPtr[Spi_CurrentCh];
 
         // Config LSB / MSB
-        switch (Spi_CurrentChConfig.SpiTransferStart)
+        switch (Spi_ConfigPtr->Spi_ChannelConfigPtr[Spi_CurrentCh].SpiTransferStart)
         {
-        case LSB_FIRST:
+        case SPI_LSB_FIRST:
             SET_BIT(*SPI_CR1, SPI_CR1_LSBF); // LSB sent first
             break;
-        case MSB_FIRST:
+        case SPI_LSB_LAST:
             CLR_BIT(*SPI_CR1, SPI_CR1_LSBF); // MSB sent first
             break;
         default:
             break;
         }
 
-        if (Spi_CurrentChConfig.ChannelType == SpiChannelBufferIB)
+        if (Spi_ConfigPtr->Spi_ChannelConfigPtr[Spi_CurrentCh].ChannelType == SpiChannelBufferIB)
         {
             // Check if IB is null
             if (Spi_IB[Spi_CurrentCh] == NULL_PTR)
             {
-                Transmit_Struct.Srcdata = &Spi_CurrentChConfig.SpiDefaultData;
+                Transmit_Struct.Srcdata = &Spi_ConfigPtr->Spi_ChannelConfigPtr[Spi_CurrentCh].SpiDefaultData;
             }
             else
             {
                 Transmit_Struct.Srcdata = Spi_IB[Spi_CurrentCh];
             }
-            Transmit_Struct.Desdata = Spi_IB[Spi_CurrentCh];
-            Transmit_Struct.Length = Spi_CurrentChConfig.NoOfDataElements;
+            Transmit_Struct.Desdata = NULL_PTR;
+            Transmit_Struct.Length = Spi_ConfigPtr->Spi_ChannelConfigPtr[Spi_CurrentCh].NoOfDataElements;
         }
         else
         {
             if (Spi_EBInstance[Spi_CurrentCh].srcDataPtr == NULL_PTR)
             {
-                Transmit_Struct.Srcdata = &Spi_CurrentChConfig.SpiDefaultData;
+                Transmit_Struct.Srcdata = &Spi_ConfigPtr->Spi_ChannelConfigPtr[Spi_CurrentCh].SpiDefaultData;
             }
             else
             {
@@ -716,7 +718,7 @@ static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
         }
 
         // Select Data Frame Format
-        switch (Spi_CurrentChConfig.SpiDataWidth)
+        switch (Spi_ConfigPtr->Spi_ChannelConfigPtr[Spi_CurrentCh].SpiDataWidth)
         {
         case SPI_DFF_MODE_8Bit:
             CLR_BIT(*SPI_CR1, SPI_CR1_DFF); // 8-Bit data Selected
@@ -733,7 +735,7 @@ static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
     } // End of channels in the Job
 
     // set SS pin
-    if (Spi_CurrentJobConfig.SpiCsOn == TRUE)
+    if (Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId].SpiCsOn == TRUE)
     {
         // HW handle of SS bit
         SET_BIT(*SPI_CR1, SPI_CR1_SSI);
@@ -741,7 +743,7 @@ static void Spi_StaticHandleJob(Spi_JobType SpiJobId)
     else
     {
         // SW handle of SS bit
-        Dio_WriteChannel(Spi_CurrentJobConfig.SpiCSPin, STD_HIGH);
+        Dio_WriteChannel(Spi_ConfigPtr->Spi_JobConfigPtr[SpiJobId].SpiCSPin, STD_HIGH);
     }
 }
 

@@ -1,6 +1,6 @@
 /************************************************************************/
 /* Author    : Nourhan Mansour                                          */
-/* Date      : 5/5/2021                                                 */
+/* Date      : 4/5/2021                                                 */
 /* Version   : 1.1.2                                                    */
 /* File      : spi.h                                                    */
 /* Note      : Current implementation only supports LEVEL 0 (SYNC) com. */
@@ -53,13 +53,6 @@
 #define SPI_E_SEQ_PENDING               0x2A
 #define SPI_E_SEQ_IN_PROCESS            0x3A
 
-/************************************************************************/
-/*                         EXTENDED ERRORS                              */
-/************************************************************************/
-
-// This Extended Production Error shall be issued when any error bit 
-// inside the SPI hardware transmit status register is raised
-#define SPI_E_HARDWARE_ERROR            
 
 /************************************************************************/
 /*                         Module Constants                             */
@@ -231,7 +224,7 @@ typedef uint8 Spi_SeqResultType;
 
 // Type of application data buffer elements.
 // Should be of type EcucIntegerParamDef
-typedef uint32 Spi_DataBufferType; 
+typedef uint8 Spi_DataBufferType; 
 
 // Type for defining the number of data elements of the type 
 // Spi_DataBufferType to send and / or receive by Channel
@@ -289,24 +282,25 @@ typedef struct Spi_ConfigType
 		// [SWS_Spi_00040] The SPI Handler/Driver handles only the Master mode.
     Spi_ModeType Spi1Mode;
 		Spi_ModeType Spi2Mode;	
-
-    // Pointer to channel configuration 
-    Spi_ChannelConfigType * Spi_ChannelConfigPtr;     
-
-    // pointer to job configuration 
-    Spi_JobConfigType * Spi_JobConfigPtr; 
-
-    // Pointer to Sequence configutration 
-    Spi_SeqConfigType * Spi_SeqConfigPtr; 
-	
-    // Number of Jobs configured 
+    
+		// Number of Jobs configured 
      Spi_JobType NoOfJobs;
 
     // Number of Channels configured 
      Spi_ChannelType NoOfChannels;
     
-		// Nu,ber of Sequnces 
-    Spi_SequenceType SpiSequence;               
+		// Number of Sequnces 
+    Spi_SequenceType SpiSequence;  
+		
+		// Pointer to Sequence configutration 
+    Spi_SeqConfigType * Spi_SeqConfigPtr;
+  
+		// pointer to job configuration 
+    Spi_JobConfigType * Spi_JobConfigPtr; 
+   
+    // Pointer to channel configuration 
+    Spi_ChannelConfigType * Spi_ChannelConfigPtr ;   
+	              
 
 }Spi_ConfigType;
 
@@ -319,6 +313,8 @@ void Spi_Init( const Spi_ConfigType* ConfigPtr );
 Std_ReturnType Spi_DeInit( void ); 
 
 Std_ReturnType Spi_WriteIB( Spi_ChannelType Channel, const Spi_DataBufferType* DataBufferPtr );
+
+// Std_ReturnType Spi_AsyncTransmit( Spi_SequenceType Sequence );
 
 Std_ReturnType Spi_ReadIB( Spi_ChannelType Channel, Spi_DataBufferType* DataBufferPointer );
 
@@ -335,8 +331,6 @@ void Spi_GetVersionInfo( Std_VersionInfoType* versioninfo );
 Std_ReturnType Spi_SyncTransmit( Spi_SequenceType Sequence );
 
 Spi_StatusType Spi_GetHWUnitStatus( Spi_HWunitType HWUnit );
-
-// Std_ReturnType Spi_AsyncTransmit( Spi_SequenceType Sequence );
 
 // void Spi_Cancel( Spi_SequenceType Sequence );
 
