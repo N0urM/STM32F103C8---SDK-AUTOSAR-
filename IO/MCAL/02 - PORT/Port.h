@@ -8,6 +8,7 @@
 #define PORT_H
 
 #include "STD_TYPES.h"
+#include "BIT_MATH.h"
 #include "Port_cfg.h"
 
 

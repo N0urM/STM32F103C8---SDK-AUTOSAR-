@@ -7,6 +7,7 @@
 #include "hw_reg.h"
 #include "det.h"
 #include "Port.h"
+#include "BIT_MATH.h"
 
 /************************************************************************/
 /*                          Local functions                             */
@@ -51,7 +52,7 @@ void Port_Init(const Port_ConfigType *ConfigPtr)
     local_PortConfigPtr = ConfigPtr;
 
     // loop on all available mcu pins
-    for (idx = 0; idx < PORT_MAX_PINS_NUM; idx)
+    for (idx = 0; idx < PORT_MAX_PINS_NUM; idx++)
     {
         // set port pin direction
         PortLocal_SetPinDirection((ConfigPtr->PortPinsConfig[idx]).PortPinId,
@@ -60,13 +61,13 @@ void Port_Init(const Port_ConfigType *ConfigPtr)
         PortLocal_SetPinMode((ConfigPtr->PortPinsConfig[idx]).PortPinId,
                              (ConfigPtr->PortPinsConfig[idx]).PortPinInitialMode);
         // set initial value
-        if (((ConfigPtr->PortPinsConfig[idx]).PortPinInitialMode | 0b1100) != 0b1100) // make sure pin is not input
+        if (((ConfigPtr->PortPinsConfig[idx]).PortPinDirection | 0b1100) != 0b1100) // make sure pin is not input
         {
             PortLocal_SetPinInitialValue((ConfigPtr->PortPinsConfig[idx]).PortPinId,
                                          (ConfigPtr->PortPinsConfig[idx]).PortPinLevelValue);
         }
         // Activate / Deactivate internal pull up
-        if (((ConfigPtr->PortPinsConfig[idx]).PortPinInitialMode | 0b1100) == 0b1100) // make sure pin is input
+        if (((ConfigPtr->PortPinsConfig[idx]).PortPinDirection | 0b1100) == 0b1100) // make sure pin is input
         {
             if ((ConfigPtr->PortPinsConfig[idx]).Pin_Internal_PullUp == STD_ON)
             {
@@ -189,10 +190,10 @@ void Port_SetPinMode(Port_PinType Pin, Port_PinModeType Mode)
 **/
 void Port_GetVersionInfo(Std_VersionInfoType *VersionInfo)
 {
-#if DioDevErrorDetect == TRUE
+#ifdef PortDevErrorDetect 
     if (VersionInfo == NULL_PTR)
     {
-        Det_ReportError(DIO_ModuleId, 0, DIO_ApiID_GetVersionInfo, DIO_E_PARAM_POINTER);
+        Det_ReportError(PORT_ModuleId, 0, 0x03, PORT_E_PARAM_POINTER);
         return;
     }
     else
